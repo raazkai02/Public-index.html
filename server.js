@@ -5,60 +5,99 @@ import path from "path";
 import { fileURLToPath } from "url";
 
 dotenv.config();
+
 const app = express();
 const port = process.env.PORT || 3000;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-app.use(express.json({ limit: "30kb" }));
-app.use(express.static(path.join(__dirname, "Public")));
+// Public folder se website serve karein
+const publicPath = path.join(__dirname, "Public");
 
+app.use(express.json({ limit: "30kb" }));
+app.use(express.static(publicPath));
+
+// Main website page
+app.get("/", (req, res) => {
+  res.sendFile(path.join(publicPath, "index.html"));
+});
+
+// AI chat API
 app.post("/api/chat", async (req, res) => {
   try {
-    if (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY === "put_your_api_key_here") {
+    const apiKey = process.env.OPENAI_API_KEY;
+
+    if (!apiKey) {
       return res.status(503).json({
-        error: "AI API key सेट नहीं है। .env फाइल में OPENAI_API_KEY जोड़ें।"
+        error: "OpenAI API key Render Environment Variables mein set nahi hai."
       });
     }
 
-    const messages = Array.isArray(req.body.messages) ? req.body.messages : [];
-    const safeMessages = messages
-      .filter(m => m && ["user", "assistant"].includes(m.role) && typeof m.content === "string")
-      .slice(-12)
-      .map(m => ({ role: m.role, content: m.content.slice(0, 2000) }));
+    let messages = [];
 
-    if (!safeMessages.length || safeMessages[safeMessages.length - 1].role !== "user") {
-      return res.status(400).json({ error: "पहले अपना सवाल लिखें या बोलें।" });
+    if (Array.isArray(req.body.messages)) {
+      messages = req.body.messages;
+    } else if (typeof req.body.message === "string") {
+      messages = [
+        {
+          role: "user",
+          content: req.body.message
+        }
+      ];
     }
 
-    const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const safeMessages = messages
+      .filter(m =>
+        m &&
+        ["user", "assistant"].includes(m.role) &&
+        typeof m.content === "string"
+      )
+      .slice(-12)
+      .map(m => ({
+        role: m.role,
+        content: m.content.slice(0, 2000)
+      }));
+
+    if (
+      !safeMessages.length ||
+      safeMessages[safeMessages.length - 1].role !== "user"
+    ) {
+      return res.status(400).json({
+        error: "Pehle apna English question likhein."
+      });
+    }
+
+    const client = new OpenAI({ apiKey });
+
     const response = await client.responses.create({
       model: "gpt-5.5",
-      instructions: `You are Raaz AI English Tutor, a kind English-speaking coach for a Hindi-speaking beginner in India.
-Teach spoken English from beginner to advanced. Reply in simple Hindi + English as useful.
-When the learner writes/speaks English, gently correct mistakes using:
-Correct English: ...
-Hindi meaning: ...
-Why: ...
-Then ask one short practice question.
-If the learner writes Hindi, translate it into natural everyday English, show the Hindi meaning, and invite them to repeat it.
-Keep answers friendly, practical, short, and suitable for a phone screen. Never claim to hear pronunciation from text alone.
-For voice conversation transcripts, respond naturally and help the learner practice.`,
-      input: safeMessages.map(m => ({ role: m.role, content: m.content })),
+      instructions: `You are Raaz AI English Tutor.
+Teach English to Hindi-speaking learners in India.
+Explain in simple Hindi and English.
+Correct English mistakes gently.
+Give natural English sentences and Hindi meanings.
+Ask one short practice question.
+Keep replies friendly and suitable for mobile screens.`,
+      input: safeMessages.map(m => ({
+        role: m.role,
+        content: m.content
+      })),
       max_output_tokens: 500
     });
 
-    res.json({ reply: response.output_text || "माफ़ कीजिए, जवाब नहीं मिला। फिर कोशिश करें।" });
+    res.json({
+      reply: response.output_text ||
+        "Maaf kijiye, jawab nahi mila. Dobara try karein."
+    });
+
   } catch (err) {
-    console.error("AI request failed:", err?.message || err);
-    const status = err?.status === 401 ? 401 : 500;
-    res.status(status).json({
-      error: status === 401
-        ? "API key गलत है। .env में अपनी सही key जाँचें।"
-        : "AI से कनेक्ट नहीं हो पाया। Internet, API key और API account की स्थिति जाँचें।"
+    console.error("AI request failed:", err.message);
+
+    res.status(500).json({
+      error: "AI se jawab nahi mila. Render logs aur API settings check karein."
     });
   }
 });
 
 app.listen(port, () => {
-  console.log(`Raaz AI English Tutor चल रहा है: http://localhost:${port}`);
+  console.log(`Raaz AI English Tutor running on port ${port}`);
 });
