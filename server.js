@@ -10,8 +10,7 @@ const app = express();
 const port = process.env.PORT || 3000;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-// public folder se website serve karein
-const publicPath = path.join(__dirname, "public");
+app.use(express.static(path.join(__dirname, "public")));
 
 app.use(express.json({ limit: "30kb" }));
 app.use(express.static(publicPath));
